@@ -1,5 +1,6 @@
 meta:
   name: alba-app
+  toolchain: docker
 
 build:
   dockerfile: Dockerfile
