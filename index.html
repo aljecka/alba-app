@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Альба</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #ffffff; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif; overflow: hidden; }
+        .mic-btn { width: 120px; height: 120px; border-radius: 50%; border: none; background: linear-gradient(135deg, #f6d365 0%, #fda085 50%, #fbc2eb 100%); box-shadow: 0 10px 25px rgba(246, 211, 101, 0.4), inset 0 0 20px rgba(255,255,255,0.5); color: white; font-size: 40px; cursor: pointer; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; text-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .mic-btn:active { transform: scale(0.92); }
+        .mic-btn.listening { animation: pearlPulse 1.5s infinite; box-shadow: 0 0 0 0 rgba(253, 160, 133, 0.7); }
+        @keyframes pearlPulse { 0% { box-shadow: 0 0 0 0 rgba(246, 211, 101, 0.7); } 70% { box-shadow: 0 0 0 30px rgba(251, 194, 235, 0); } 100% { box-shadow: 0 0 0 0 rgba(251, 194, 235, 0); } }
+        .settings-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 12px; box-shadow: 0 5px 20px rgba(0,0,0,0.2); z-index: 100; width: 85%; }
+        .settings-modal input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 8px; }
+        .settings-modal button { width: 100%; padding: 10px; background: #f6d365; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <button class="mic-btn" id="micBtn" onclick="toggleListen()">🎤</button>
+    <div class="settings-modal" id="settingsModal">
+        <h3 style="margin-bottom:10px;">Настройки Альбы</h3>
+        <input type="text" id="webhookUrl" placeholder="Вставь сюда URL из N8N">
+        <button onclick="saveSettings()">Сохранить и закрыть</button>
+    </div>
+<script>
+let WEBHOOK_URL = localStorage.getItem('alba_webhook') || '';
+let recognition;
+let isListening = false;
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.lang = 'ru-RU';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.onresult = (e) => { const text = e.results[0][0].transcript; sendToN8N(text); };
+    recognition.onerror = () => stopListening();
+    recognition.onend = () => stopListening();
+} else { alert('Используйте Chrome на Android.'); }
+
+function toggleListen() {
+    if (!recognition) return;
+    if (isListening) { recognition.stop(); } 
+    else {
+        const longPress = setTimeout(() => { document.getElementById('settingsModal').style.display = 'block'; document.getElementById('webhookUrl').value = WEBHOOK_URL; stopListening(); }, 2000);
+        recognition.start();
+        document.getElementById('micBtn').classList.add('listening');
+        isListening = true;
+        document.getElementById('micBtn').onmouseup = () => clearTimeout(longPress);
+        document.getElementById('micBtn').ontouchend = () => clearTimeout(longPress);
+    }
+}
+function stopListening() { document.getElementById('micBtn').classList.remove('listening'); isListening = false; }
+
+async function sendToN8N(text) {
+    if (!WEBHOOK_URL) { speak('Пожалуйста, настройте вебхук. Удерживайте кнопку две секунды.'); return; }
+    try {
+        const res = await fetch(WEBHOOK_URL, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({text}) });
+        const data = await res.json();
+        if (data.reply) speak(data.reply);
+    } catch(e) { speak('Ошибка связи с сервером'); }
+}
+function speak(text) {
+    if ('speechSynthesis' in window) { speechSynthesis.cancel(); const utterance = new SpeechSynthesisUtterance(text); utterance.lang = 'ru-RU'; speechSynthesis.speak(utterance); }
+}
+function saveSettings() {
+    const url = document.getElementById('webhookUrl').value.trim();
+    localStorage.setItem('alba_webhook', url); WEBHOOK_URL = url;
+    document.getElementById('settingsModal').style.display = 'none';
+    speak('Настройки сохранены');
+}
+</script>
+</body>
+</html>
